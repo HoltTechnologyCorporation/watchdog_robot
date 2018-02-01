@@ -1,0 +1,26 @@
+syntax:glob
+
+# Common
+*.pyc
+*.pyo
+*.swp
+*.swo
+*.orig
+
+# Project specific
+project/settings_local.py
+.env
+pip-log.txt
+
+syntax:regexp
+^var/
+^export/
+^dump/
+^backup/
+^sql/schema.sql
+^sql/data/
+^sql/import/
+
+# Grab development
+^grab$
+^weblib$
