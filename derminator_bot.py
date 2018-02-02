@@ -4,9 +4,13 @@ import json
 import logging
 from argparse import ArgumentParser
 from itertools import chain
+from datetime import datetime, timedelta
+from traceback import format_exc
 
 from telegram import ParseMode
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+
+from project.database import connect_db
 
 HELP = """*Derminator Bot*
 
@@ -42,6 +46,7 @@ Litecoin: LKJ86NwUkoboZyFHQwKPx8X984g3m3MPjC
 Dash: XtGpsphiR2n9Shx9JFAwnuwGmWzSEvmrtU
 UFO coin: CAdfaUR3tqfumoN7vQMVZ98CakyywgwK1L
 """
+db = connect_db()
 
 
 class InvalidCommand(Exception):
@@ -51,7 +56,7 @@ class InvalidCommand(Exception):
 def handle_start_help(bot, update):
     #if msg.chat.type == 'private':
     bot.send_message(
-        chat_id=update.message.chat_id,
+        chat_id=update.message.chat.id,
         text=HELP,
         parse_mode=ParseMode.MARKDOWN,
         disable_web_page_preview=True
@@ -85,21 +90,71 @@ def build_user_name(user):
 def handle_any_message(bot, update):
     del_reason = reason_to_delete(update.message)
     if del_reason:
-        msg = 'Message from %s deleted. Reason: %s' % (
-            build_user_name(update.message.from_user), del_reason
-        )
         try:
             bot.delete_message(
-                chat_id=update.message.chat_id,
+                chat_id=update.message.chat.id,
                 message_id=update.message.message_id
             )
         except Exception as ex:
+            db.fail.save({
+                'date': datetime.utcnow(),
+                'error': str(ex),
+                'traceback': format_exc(),
+                'chat_id': update.message.chat.id,
+                'chat_username': update.message.chat.username,
+            })
             raise
         else:
+            db.event.save({
+                'date': datetime.utcnow(),
+                'text': update.message.text,
+                'type': 'delete_msg',
+                'chat_id': update.message.chat.id,
+                'chat_username': update.message.chat.id,
+                'user_id': update.message.from_user.id,
+                'user_username': update.message.from_user.username,
+            })
+            msg = 'Message from %s deleted. Reason: %s' % (
+                build_user_name(update.message.from_user),
+                del_reason
+            )
             bot.send_message(
-                chat_id=update.message.chat_id,
+                chat_id=update.message.chat.id,
                 text=msg
             )
+
+
+def handle_stat(bot, update):
+    msg = update.message
+    if msg.chat.type != 'private':
+        pass
+    else:
+        today = datetime.utcnow().replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        start = today
+        day_chats = []
+        day_messages = []
+        for x in range(7):
+            end = start + timedelta(days=1)
+            query = {
+                'date': {'$gte': start, '$lt': end},
+                'type': 'delete_msg',
+            }
+            events = list(db.event.find(query))
+            chat_count = len(set((x['chat_id'] for x in events)))
+            msg_count = len(events)
+            day_chats.insert(0, chat_count)
+            day_messages.insert(0, msg_count)
+            start -= timedelta(days=1)
+        output = '\n'.join((
+            'Chats: %s' % ' | '.join(map(str, day_chats)),
+            'Deleted messages: %s' % ' | '.join(map(str, day_chats)),
+        ))
+        bot.send_message(
+            chat_id=msg.chat.id,
+            text=output
+        )
 
 
 def setup_logging():
@@ -128,6 +183,7 @@ def main():
     updater = init_bot_with_mode(opts.mode)
     dispatcher = updater.dispatcher
     dispatcher.add_handler(CommandHandler(['start', 'help'], handle_start_help))
+    dispatcher.add_handler(CommandHandler('stat', handle_stat))
     dispatcher.add_handler(MessageHandler(
         (Filters.text | Filters.audio | Filters.document | Filters.photo | Filters.video),
         handle_any_message

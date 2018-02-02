@@ -2,4 +2,8 @@ from pymongo import MongoClient
 
 from project.settings import MONGODB
 
-db = MongoClient(**MONGODB['connection'])[MONGODB['dbname']]
+
+def connect_db():
+    db = MongoClient(**MONGODB['connection'])[MONGODB['dbname']]
+    db.event.create_index([('date', 1), ('type', 1)])
+    return db
