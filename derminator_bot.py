@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from pprint import pprint
+import time
 import json
 import logging
 from argparse import ArgumentParser
@@ -47,20 +48,11 @@ Dash: XtGpsphiR2n9Shx9JFAwnuwGmWzSEvmrtU
 UFO coin: CAdfaUR3tqfumoN7vQMVZ98CakyywgwK1L
 """
 db = connect_db()
+ADMIN_IDS_CACHE = {}
 
 
 class InvalidCommand(Exception):
     pass
-
-
-def handle_start_help(bot, update):
-    #if msg.chat.type == 'private':
-    bot.send_message(
-        chat_id=update.message.chat.id,
-        text=HELP,
-        parse_mode=ParseMode.MARKDOWN,
-        disable_web_page_preview=True
-    )
 
 
 def reason_to_delete(msg):
@@ -87,108 +79,157 @@ def build_user_name(user):
         return '#%d' % user.id
 
 
-def handle_any_message(bot, update):
-    del_reason = reason_to_delete(update.message)
-    if del_reason:
-        try:
-            bot.delete_message(
-                chat_id=update.message.chat.id,
-                message_id=update.message.message_id
-            )
-        except Exception as ex:
-            db.fail.save({
-                'date': datetime.utcnow(),
-                'error': str(ex),
-                'traceback': format_exc(),
-                'chat_id': update.message.chat.id,
-                'chat_username': update.message.chat.username,
-            })
-            raise
-        else:
-            db.event.save({
-                'date': datetime.utcnow(),
-                'text': update.message.text,
-                'type': 'delete_msg',
-                'chat_id': update.message.chat.id,
-                'chat_username': update.message.chat.id,
-                'user_id': update.message.from_user.id,
-                'user_username': update.message.from_user.username,
-            })
-            msg = 'Message from %s deleted. Reason: %s' % (
-                build_user_name(update.message.from_user),
-                del_reason
-            )
-            bot.send_message(
-                chat_id=update.message.chat.id,
-                text=msg
-            )
-
-
-def handle_stat(bot, update):
-    msg = update.message
-    if msg.chat.type != 'private':
-        pass
+def get_admin_ids(bot, chat_id):
+    try:
+        ids, update_time = ADMIN_IDS_CACHE[chat_id]
+    except KeyError:
+        ids, update_time = None, 0
     else:
-        today = datetime.utcnow().replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        start = today
-        day_chats = []
-        day_messages = []
-        for x in range(7):
-            end = start + timedelta(days=1)
-            query = {
-                'date': {'$gte': start, '$lt': end},
-                'type': 'delete_msg',
-            }
-            events = list(db.event.find(query))
-            chat_count = len(set((x['chat_id'] for x in events)))
-            msg_count = len(events)
-            day_chats.insert(0, chat_count)
-            day_messages.insert(0, msg_count)
-            start -= timedelta(days=1)
-        output = '\n'.join((
-            'Chats: %s' % ' | '.join(map(str, day_chats)),
-            'Deleted messages: %s' % ' | '.join(map(str, day_chats)),
-        ))
+        logging.debug('Using cached admin ids for chat [%d]' % chat_id)
+    if time.time() - update_time > 3600:
+        admins = bot.get_chat_administrators(chat_id)
+        ids = [x.user.id for x in admins]
+        ADMIN_IDS_CACHE[chat_id] = (ids, time.time())
+    return ids
+
+
+class Controller(object):
+    def __init__(self, bot, mode='production'):
+        assert mode in ('production', 'test')
+        self.bot = bot
+        self.bot_id = self.bot.get_me().id
+        self.mode = mode
+        self.db = connect_db()
+
+    def handle_start_help(self, bot, update):
+        #if msg.chat.type == 'private':
         bot.send_message(
-            chat_id=msg.chat.id,
-            text=output
+            chat_id=update.message.chat.id,
+            text=HELP,
+            parse_mode=ParseMode.MARKDOWN,
+            disable_web_page_preview=True
         )
 
+    def handle_any_message(self, bot, update):
+        msg = update.effective_message
+        # Do not restrict messages from admins
+        admin_ids = get_admin_ids(bot, msg.chat.id)
+        if msg.from_user.id in admin_ids:
+            return
+        # Handle message from non-admin user
+        del_reason = reason_to_delete(msg)
+        if del_reason:
+            try:
+                bot.delete_message(
+                    chat_id=update.message.chat.id,
+                    message_id=update.message.message_id
+                )
+            except Exception as ex:
+                db.fail.save({
+                    'date': datetime.utcnow(),
+                    'error': str(ex),
+                    'traceback': format_exc(),
+                    'chat_id': update.message.chat.id,
+                    'chat_username': update.message.chat.username,
+                })
+                raise
+            else:
+                db.event.save({
+                    'date': datetime.utcnow(),
+                    'text': update.message.text,
+                    'type': 'delete_msg',
+                    'chat_id': update.message.chat.id,
+                    'chat_username': update.message.chat.id,
+                    'user_id': update.message.from_user.id,
+                    'user_username': update.message.from_user.username,
+                })
+                msg = 'Message from %s deleted. Reason: %s' % (
+                    build_user_name(update.message.from_user),
+                    del_reason
+                )
+                bot.send_message(
+                    chat_id=update.message.chat.id,
+                    text=msg
+                )
 
-def setup_logging():
-    logging.basicConfig(level=logging.DEBUG)
+
+    def handle_stat(self, bot, update):
+        msg = update.message
+        if msg.chat.type != 'private':
+            pass
+        else:
+            today = datetime.utcnow().replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            start = today
+            day_chats = []
+            day_messages = []
+            for x in range(7):
+                end = start + timedelta(days=1)
+                query = {
+                    'date': {'$gte': start, '$lt': end},
+                    'type': 'delete_msg',
+                }
+                events = list(db.event.find(query))
+                chat_count = len(set((x['chat_id'] for x in events)))
+                msg_count = len(events)
+                day_chats.insert(0, chat_count)
+                day_messages.insert(0, msg_count)
+                start -= timedelta(days=1)
+            output = '\n'.join((
+                'Chats: %s' % ' | '.join(map(str, day_chats)),
+                'Deleted messages: %s' % ' | '.join(map(str, day_chats)),
+            ))
+            bot.send_message(
+                chat_id=msg.chat.id,
+                text=output
+            )
+
+def register_handlers(dispatcher, ctl):
+    dispatcher.add_handler(CommandHandler(
+        ['start', 'help'], ctl.handle_start_help)
+    )
+    dispatcher.add_handler(CommandHandler('stat', ctl.handle_stat))
+    dispatcher.add_handler(MessageHandler(
+        (
+            Filters.text | Filters.audio | Filters.document
+            | Filters.photo | Filters.video
+        ),
+        ctl.handle_any_message
+    ))
 
 
-def init_bot_with_mode(mode):
+def get_token(mode):
+    assert mode in ('test', 'production')
     with open('var/config.json') as inp:
         config = json.load(inp)
     if mode == 'test':
-        token = config['test_api_token']
+        return config['test_api_token']
     else:
-        token = config['api_token']
+        return config['api_token']
 
-    updater = Updater(token=token)
 
-    return updater
+def init_updater_with_mode(mode):
+    return Updater(token=get_token(mode), workers=16)
+
+
+def init_bot_with_mode(mode):
+    return Bot(token=get_token(mode))
 
 
 def main():
-    setup_logging()
     parser = ArgumentParser()
-    parser.add_argument('--mode')
+    parser.add_argument('--mode', default='production')
     opts = parser.parse_args()
-
-    updater = init_bot_with_mode(opts.mode)
+    logging.basicConfig(level=logging.DEBUG)
+    updater = init_updater_with_mode(opts.mode)
     dispatcher = updater.dispatcher
-    dispatcher.add_handler(CommandHandler(['start', 'help'], handle_start_help))
-    dispatcher.add_handler(CommandHandler('stat', handle_stat))
-    dispatcher.add_handler(MessageHandler(
-        (Filters.text | Filters.audio | Filters.document | Filters.photo | Filters.video),
-        handle_any_message
-    ))
+    ctl = Controller(updater.bot, opts.mode)
+    register_handlers(dispatcher, ctl)
+    updater.bot.delete_webhook()
     updater.start_polling()
+
+
 
 
 if __name__ == '__main__':
