@@ -7,11 +7,17 @@ from argparse import ArgumentParser
 from itertools import chain
 from datetime import datetime, timedelta
 from traceback import format_exc
+import re
 
 from telegram import ParseMode
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, RegexHandler
 
 from project.database import connect_db
+
+
+class InvalidCommand(Exception):
+    pass
+
 
 HELP = """*Derminator Bot*
 
@@ -49,20 +55,31 @@ UFO coin: CAdfaUR3tqfumoN7vQMVZ98CakyywgwK1L
 """
 db = connect_db()
 ADMIN_IDS_CACHE = {}
+RE_ALLOW_COMMAND = re.compile('^/derminator_allow (\w+)$')
+RE_DISALLOW_COMMAND = re.compile('^/derminator_disallow (\w+)$')
+VALID_OPTIONS = ('link', 'bot')
+OPTION_DEFAULT_VALUE = {
+    'link': False,
+    'email': False,
+}
+OPTION_CACHE = {}
 
 
 class InvalidCommand(Exception):
     pass
 
 
-def reason_to_delete(msg):
-    reason = None
+def find_msg_types(msg):
+    ret = set()
     for ent in chain(msg.entities, msg.caption_entities):
         if ent.type in ('url', 'text_link'):
-            reason = 'external link'
+            ret.add('link')
         elif ent.type in ('email',):
-            reason = 'email'
-    return reason
+            ret.add('email')
+    for user in msg.new_chat_members:
+        if user.is_bot:
+            ret.add('bot')
+    return ret
 
 
 def build_user_name(user):
@@ -113,44 +130,41 @@ class Controller(object):
     def handle_any_message(self, bot, update):
         msg = update.effective_message
         # Do not restrict messages from admins
-        admin_ids = get_admin_ids(bot, msg.chat.id)
-        if msg.from_user.id in admin_ids:
+        if msg.from_user.id in get_admin_ids(bot, msg.chat.id):
             return
         # Handle message from non-admin user
-        del_reason = reason_to_delete(msg)
-        if del_reason:
-            try:
-                bot.delete_message(
-                    chat_id=update.message.chat.id,
-                    message_id=update.message.message_id
-                )
-            except Exception as ex:
-                db.fail.save({
-                    'date': datetime.utcnow(),
-                    'error': str(ex),
-                    'traceback': format_exc(),
-                    'chat_id': update.message.chat.id,
-                    'chat_username': update.message.chat.username,
-                })
-                raise
-            else:
-                db.event.save({
-                    'date': datetime.utcnow(),
-                    'text': update.message.text,
-                    'type': 'delete_msg',
-                    'chat_id': update.message.chat.id,
-                    'chat_username': update.message.chat.id,
-                    'user_id': update.message.from_user.id,
-                    'user_username': update.message.from_user.username,
-                })
-                msg = 'Message from %s deleted. Reason: %s' % (
-                    build_user_name(update.message.from_user),
-                    del_reason
-                )
-                bot.send_message(
-                    chat_id=update.message.chat.id,
-                    text=msg
-                )
+        types = find_msg_types(msg)
+        if types:
+            for msg_type in types:
+                allowed = self.load_option(msg.chat.id, msg_type)
+                if not allowed:
+                    try:
+                        bot.delete_message(
+                            chat_id=update.message.chat.id,
+                            message_id=update.message.message_id
+                        )
+                    except Exception as ex:
+                        db.fail.save({
+                            'date': datetime.utcnow(),
+                            'error': str(ex),
+                            'traceback': format_exc(),
+                            'msg': msg.to_dict(),
+                        })
+                        raise
+                    else:
+                        db.event.save({
+                            'date': datetime.utcnow(),
+                            'text': update.message.text,
+                            'type': 'delete',
+                            'reason': msg_type,
+                            'msg': msg.to_dict(),
+                        })
+                        msg = 'Message from %s deleted. Reason: %s' % (
+                            build_user_name(update.message.from_user), msg_type
+                        )
+                        bot.send_message(
+                            chat_id=update.message.chat.id, text=msg
+                        )
 
 
     def handle_stat(self, bot, update):
@@ -185,11 +199,117 @@ class Controller(object):
                 text=output
             )
 
+    def save_option(self, chat_id, option, value):
+        OPTION_CACHE[(chat_id, option)] = value
+        self.db.config.find_one_and_update(
+            {'chat_id': chat_id, 'key': option},
+            {'$set': {'value': value}},
+            upsert=True,
+        )
+
+    def load_option(self, chat_id, option):
+        try:
+            value = OPTION_CACHE[(chat_id, option)]
+        except KeyError:
+            item = self.db.config.find_one(
+                {'chat_id': chat_id, 'key': option}
+            )
+            if item:
+                value = item['value']
+            else:
+                value = OPTION_DEFAULT_VALUE.get(option, True)
+                OPTION_CACHE[(chat_id, option)] = value
+        return value
+
+    def handle_allow(self, bot, update):
+        try:
+            msg = update.effective_message
+            if msg.from_user.id not in get_admin_ids(bot, msg.chat.id):
+                bot.send_message(msg.chat.id, 'Access denied')
+                return
+            value = True
+            match = RE_ALLOW_COMMAND.match(msg.text)
+            if not match:
+                raise InvalidCommand
+            option = match.group(1)
+            if option not in VALID_OPTIONS:
+                raise InvalidCommand
+            self.save_option(msg.chat.id, option, value)
+            bot.send_message(msg.chat.id, 'Option %s has been set to %s' % (option, value))
+        except InvalidCommand as ex:
+            bot.send_message(msg.chat.id, 'Invalid command')
+
+    def handle_disallow(self, bot, update):
+        try:
+            msg = update.effective_message
+            if msg.from_user.id not in get_admin_ids(bot, msg.chat.id):
+                bot.send_message(msg.chat.id, 'Access denied')
+                return
+            value = False
+            match = RE_DISALLOW_COMMAND.match(msg.text)
+            if not match:
+                raise InvalidCommand
+            option = match.group(1)
+            if option not in VALID_OPTIONS:
+                raise InvalidCommand
+            self.save_option(msg.chat.id, option, value)
+            bot.send_message(msg.chat.id, 'Option %s has been set to %s' % (option, value))
+        except InvalidCommand as ex:
+            bot.send_message(msg.chat.id, 'Invalid command')
+
+    def handle_new_chat_members(self, bot, update):
+        msg = update.message
+        # Do not restrict messages from admins
+        if msg.from_user.id in get_admin_ids(bot, msg.chat.id):
+            return
+        # Handle message from non-admin user
+        bot_allowed = self.load_option(msg.chat.id, 'bot')
+        if not bot_allowed:
+            for user in msg.new_chat_members:
+                if user.is_bot:
+                    try:
+                        bot.kick_chat_member(msg.chat.id, user.id)
+                        #bot.delete_message(
+                        #    chat_id=update.message.chat.id,
+                        #    message_id=update.message.message_id
+                        #)
+                    except Exception as ex:
+                        db.fail.save({
+                            'date': datetime.utcnow(),
+                            'error': str(ex),
+                            'traceback': format_exc(),
+                            'msg': msg.to_dict(),
+                        })
+                        raise
+                    else:
+                        db.event.save({
+                            'date': datetime.utcnow(),
+                            'text': update.message.text,
+                            'type': 'kick',
+                            'reason': 'bot',
+                            'msg': msg.to_dict(),
+                        })
+                        msg = 'Bot %s deleted. Reason: bots are not allowed' % (
+                            build_user_name(user)
+                        )
+                        bot.send_message(
+                            chat_id=update.message.chat.id, text=msg
+                        )
+
 def register_handlers(dispatcher, ctl):
     dispatcher.add_handler(CommandHandler(
         ['start', 'help'], ctl.handle_start_help)
     )
     dispatcher.add_handler(CommandHandler('stat', ctl.handle_stat))
+    dispatcher.add_handler(RegexHandler(
+        '^/derminator_allow ', ctl.handle_allow
+    ))
+    dispatcher.add_handler(RegexHandler(
+        '^/derminator_disallow ', ctl.handle_disallow
+    ))
+    dispatcher.add_handler(MessageHandler(
+        Filters.status_update.new_chat_members, ctl.handle_new_chat_members
+    ))
     dispatcher.add_handler(MessageHandler(
         (
             Filters.text | Filters.audio | Filters.document
