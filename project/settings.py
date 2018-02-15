@@ -1,6 +1,6 @@
 MONGODB = {
     'connection': {},
-    'dbname': 'derminator',
+    'dbname': 'watchdog_robot',
 }
 
 try:

@@ -19,7 +19,7 @@ class InvalidCommand(Exception):
     pass
 
 
-HELP = """*Derminator Bot*
+HELP = """*Watchdog Robot*
 
 This bot removes any link posted to the group.
 
@@ -38,7 +38,7 @@ Support group: [@tgrambots](https://t.me/tgrambots)
 
 *Open Source*
 
-The source code is available at [github.com/lorien/derminator_bot](https://github.com/lorien/derminator_bot)
+The source code is available at [github.com/lorien/watchdog_robot](https://github.com/lorien/watchdog_robot)
 
 *My Other Project*
 
@@ -55,8 +55,8 @@ UFO coin: CAdfaUR3tqfumoN7vQMVZ98CakyywgwK1L
 """
 db = connect_db()
 ADMIN_IDS_CACHE = {}
-RE_ALLOW_COMMAND = re.compile('^/derminator_allow (\w+)$')
-RE_DISALLOW_COMMAND = re.compile('^/derminator_disallow (\w+)$')
+RE_ALLOW_COMMAND = re.compile('^/watchdog_allow (\w+)$')
+RE_DISALLOW_COMMAND = re.compile('^/watchdog_disallow (\w+)$')
 VALID_OPTIONS = ('link', 'bot')
 OPTION_CACHE = {}
 
@@ -298,10 +298,10 @@ def register_handlers(dispatcher, ctl):
     )
     dispatcher.add_handler(CommandHandler('stat', ctl.handle_stat))
     dispatcher.add_handler(RegexHandler(
-        '^/derminator_allow ', ctl.handle_allow
+        '^/watchdog_allow ', ctl.handle_allow
     ))
     dispatcher.add_handler(RegexHandler(
-        '^/derminator_disallow ', ctl.handle_disallow
+        '^/watchdog_disallow ', ctl.handle_disallow
     ))
     dispatcher.add_handler(MessageHandler(
         Filters.status_update.new_chat_members, ctl.handle_new_chat_members
