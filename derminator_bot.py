@@ -58,10 +58,6 @@ ADMIN_IDS_CACHE = {}
 RE_ALLOW_COMMAND = re.compile('^/derminator_allow (\w+)$')
 RE_DISALLOW_COMMAND = re.compile('^/derminator_disallow (\w+)$')
 VALID_OPTIONS = ('link', 'bot')
-OPTION_DEFAULT_VALUE = {
-    'link': False,
-    'email': False,
-}
 OPTION_CACHE = {}
 
 
@@ -217,7 +213,7 @@ class Controller(object):
             if item:
                 value = item['value']
             else:
-                value = OPTION_DEFAULT_VALUE.get(option, True)
+                value = True
                 OPTION_CACHE[(chat_id, option)] = value
         return value
 
