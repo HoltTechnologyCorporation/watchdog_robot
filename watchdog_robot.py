@@ -10,7 +10,8 @@ from traceback import format_exc
 import re
 
 from telegram import ParseMode
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, RegexHandler
+from telegram.ext import CommandHandler, MessageHandler, Filters, RegexHandler
+from tgram import TgramRobot
 
 from project.database import connect_db
 
@@ -106,12 +107,9 @@ def get_admin_ids(bot, chat_id):
     return ids
 
 
-class Controller(object):
-    def __init__(self, bot, mode='production'):
-        assert mode in ('production', 'test')
-        self.bot = bot
-        self.bot_id = self.bot.get_me().id
-        self.mode = mode
+class WatchdogRobot(TgramRobot):
+    def before_start_processing(self):
+        self.bot_id = self.updater.bot.get_me().id
         self.db = connect_db()
 
     def handle_start_help(self, bot, update):
@@ -231,7 +229,10 @@ class Controller(object):
             if option not in VALID_OPTIONS:
                 raise InvalidCommand
             self.save_option(msg.chat.id, option, value)
-            bot.send_message(msg.chat.id, 'Option %s has been set to %s' % (option, value))
+            bot.send_message(
+                msg.chat.id, 'Option `%s` has been set to %s' % (option, value),
+                parse_mode=ParseMode.MARKDOWN
+            )
         except InvalidCommand as ex:
             bot.send_message(msg.chat.id, 'Invalid command')
 
@@ -249,7 +250,7 @@ class Controller(object):
             if option not in VALID_OPTIONS:
                 raise InvalidCommand
             self.save_option(msg.chat.id, option, value)
-            bot.send_message(msg.chat.id, 'Option %s has been set to %s' % (option, value))
+            bot.send_message(msg.chat.id, 'Option `%s` has been set to %s' % (option, value))
         except InvalidCommand as ex:
             bot.send_message(msg.chat.id, 'Invalid command')
 
@@ -292,60 +293,34 @@ class Controller(object):
                             chat_id=update.message.chat.id, text=msg
                         )
 
-def register_handlers(dispatcher, ctl):
-    dispatcher.add_handler(CommandHandler(
-        ['start', 'help'], ctl.handle_start_help)
-    )
-    dispatcher.add_handler(CommandHandler('stat', ctl.handle_stat))
-    dispatcher.add_handler(RegexHandler(
-        '^/watchdog_allow ', ctl.handle_allow
-    ))
-    dispatcher.add_handler(RegexHandler(
-        '^/watchdog_disallow ', ctl.handle_disallow
-    ))
-    dispatcher.add_handler(MessageHandler(
-        Filters.status_update.new_chat_members, ctl.handle_new_chat_members
-    ))
-    dispatcher.add_handler(MessageHandler(
-        (
-            Filters.text | Filters.audio | Filters.document
-            | Filters.photo | Filters.video
-        ),
-        ctl.handle_any_message
-    ))
-
-
-def get_token(mode):
-    assert mode in ('test', 'production')
-    with open('var/config.json') as inp:
-        config = json.load(inp)
-    if mode == 'test':
-        return config['test_api_token']
-    else:
-        return config['api_token']
-
-
-def init_updater_with_mode(mode):
-    return Updater(token=get_token(mode), workers=16)
-
-
-def init_bot_with_mode(mode):
-    return Bot(token=get_token(mode))
+    def register_handlers(self):
+        self.dispatcher.add_handler(CommandHandler(
+            ['start', 'help'], self.handle_start_help)
+        )
+        self.dispatcher.add_handler(CommandHandler('stat', self.handle_stat))
+        self.dispatcher.add_handler(RegexHandler(
+            '^/watchdog_allow ', self.handle_allow
+        ))
+        self.dispatcher.add_handler(RegexHandler(
+            '^/watchdog_disallow ', self.handle_disallow
+        ))
+        self.dispatcher.add_handler(MessageHandler(
+            Filters.status_update.new_chat_members, self.handle_new_chat_members
+        ))
+        self.dispatcher.add_handler(MessageHandler(
+            (
+                Filters.text | Filters.audio | Filters.document
+                | Filters.photo | Filters.video
+            ),
+            self.handle_any_message
+        ))
 
 
 def main():
-    parser = ArgumentParser()
-    parser.add_argument('--mode', default='production')
-    opts = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG)
-    updater = init_updater_with_mode(opts.mode)
-    dispatcher = updater.dispatcher
-    ctl = Controller(updater.bot, opts.mode)
-    register_handlers(dispatcher, ctl)
-    updater.bot.delete_webhook()
-    updater.start_polling()
-
-
+    robot = WatchdogRobot()
+    robot.parse_cli_opts()
+    robot.run_polling()
 
 
 if __name__ == '__main__':
