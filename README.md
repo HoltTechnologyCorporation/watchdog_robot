@@ -1,11 +1,15 @@
-## About derminator_bot
+## About watchdog_robot
 
-This bot deletes any message containig the link
+This bot can delete:
+ * all messages with links
+ * all joined bots
+ * all joined users
+
+All features could be enabled and disabled for specific chat.
 
 ## Support
 
-* Support chat: [@tgrambots](https://t.me/tgrambots)
-* Author's telegram: [@madspectator](https://t.me/madspectator)
+* Email: lorien@lorien.name
 * Use github issues to report bugs: [github issues](https://github.com/lorien/derminator_bot/issues)
 
 ## Other projects
