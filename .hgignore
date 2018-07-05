@@ -11,17 +11,9 @@ syntax:glob
 project/settings_local.py
 .env
 pip-log.txt
+.git
 
 syntax:regexp
 ^var/
-^export/
-^dump/
-^backup/
-^sql/schema.sql
-^sql/data/
-^sql/import/
-
-# Grab development
-^grab$
-^weblib$
-\.git/
+^Pipfile\.lock$
+^tgram$
