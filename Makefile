@@ -5,10 +5,13 @@ build: venv init
 build_dev: venv_dev init
 
 venv:
-	pipenv sync --three
+	pipenv --three lock
+	pipenv --three sync
 
 venv_dev:
-	pipenv sync --three --dev
+	pipenv --three lock
+	pipenv --three sync
+	pipenv --three --dev install
 	
 clean:
 	find -name '*.pyc' -delete
