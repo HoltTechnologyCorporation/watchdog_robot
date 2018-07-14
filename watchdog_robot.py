@@ -22,10 +22,8 @@ class InvalidCommand(Exception):
 
 HELP = """*Watchdog Robot*
 
-This bot can delete:
- - all messages with links
- - all joined bots
- - all joined users
+Type of objects which this bot can delete:
+{msg_types}
 
 All features could be enabled and disabled for specific chat.
 
@@ -58,7 +56,6 @@ ADMIN_IDS_CACHE = {}
 RE_ALLOW_COMMAND = re.compile('^/watchdog_allow (\w+)$')
 RE_BLOCK_COMMAND = re.compile('^/watchdog_block (\w+)$')
 RE_SET_COMMAND = re.compile('^/watchdog_set (\w+)=(\w+)$')
-MSG_TYPES = ('link', 'bot', 'user')
 OPTION_CACHE = {}
 DEFAULT_IS_ALLOWED = True
 DEFAULT_SETTINGS = {
@@ -67,6 +64,11 @@ DEFAULT_SETTINGS = {
 VALID_SETTINGS = (
     'notify_actions',
 )
+MSG_TYPES = (
+    'link', 'bot', 'user', 'sticker', 'gif', 'voice',
+    'attachment', 'audio', 'photo', 'user_joined_msg',
+    'user_left_msg', 'mention',
+)
 
 
 class InvalidCommand(Exception):
@@ -74,6 +76,12 @@ class InvalidCommand(Exception):
 
 
 class WatchdogRobot(TgramRobot):
+    def render_help(self):
+        msg_types_data = '\n'.join(
+            ' - %s' % x.replace('_', r'\_') for x in MSG_TYPES
+        )
+        return HELP.format(msg_types=msg_types_data)
+
     def get_chat_admin_ids(self, bot, chat_id):
         try:
             ids, update_time = ADMIN_IDS_CACHE[chat_id]
@@ -105,11 +113,29 @@ class WatchdogRobot(TgramRobot):
         for ent in chain(msg.entities, msg.caption_entities):
             if ent.type in ('url', 'text_link'):
                 ret.add('link')
-            elif ent.type in ('email',):
+            elif ent.type  == 'email':
                 ret.add('email')
+            elif ent.type == 'mention':
+                ret.add('mention')
         for user in msg.new_chat_members:
             if user.is_bot:
                 ret.add('bot')
+        if msg.sticker:
+            ret.add('sticker')
+        if msg.document and msg.document.mime_type == 'video/mp4':
+            ret.add('gif')
+        if msg.voice:
+            ret.add('voice')
+        if msg.document:
+            ret.add('attachment')
+        if msg.audio:
+            ret.add('audio')
+        if msg.photo:
+            ret.add('photo')
+        if msg.new_chat_members:
+            ret.add('user_joined_msg')
+        if msg.left_chat_member:
+            ret.add('user_left_msg')
         return ret
 
     def before_start_processing(self):
@@ -121,14 +147,25 @@ class WatchdogRobot(TgramRobot):
         if msg.chat.type == 'private':
             bot.send_message(
                 chat_id=update.message.chat.id,
-                text=HELP,
+                text=self.render_help(),
                 parse_mode=ParseMode.MARKDOWN,
                 disable_web_page_preview=True
             )
 
+    def safe_delete_msg(self, bot, msg):
+        try:
+            bot.delete_message(
+                chat_id=msg.chat.id,
+                message_id=msg.message_id
+            )
+        except Exception as ex:
+            logging.error(ex)
+
     def handle_config(self, bot, update):
         msg = update.effective_message
-        if msg.chat.type in ('group', 'supergroup'):
+        if msg.from_user.id not in self.get_chat_admin_ids(bot, msg.chat.id):
+            self.safe_delete_msg(bot, msg)
+        elif msg.chat.type in ('group', 'supergroup'):
             out = ['*Chat config:*']
             for setting in VALID_SETTINGS:
                 allowed = self.load_chat_setting(
@@ -163,6 +200,8 @@ class WatchdogRobot(TgramRobot):
     def handle_stat(self, bot, update):
         msg = update.message
         if msg.chat.type != 'private':
+            pass
+        elif msg.from_user.id not in self.get_chat_admin_ids(bot, msg.chat.id):
             pass
         else:
             today = datetime.utcnow().replace(
@@ -218,21 +257,21 @@ class WatchdogRobot(TgramRobot):
         try:
             msg = update.effective_message
             if msg.from_user.id not in self.get_chat_admin_ids(bot, msg.chat.id):
-                # TODO: delete msg
-                return
-            match = RE_ALLOW_COMMAND.match(msg.text)
-            if not match:
-                raise InvalidCommand
-            msg_type = match.group(1)
-            if msg_type not in MSG_TYPES:
-                raise InvalidCommand
-            self.save_chat_setting(
-                msg.chat.id, 'is_allowed_%s' % msg_type, True
-            )
-            bot.send_message(
-                msg.chat.id, '%ss are allowed now.' % msg_type.title(),
-                parse_mode=ParseMode.MARKDOWN
-            )
+                self.safe_delete_msg(bot, msg)
+            else:
+                match = RE_ALLOW_COMMAND.match(msg.text)
+                if not match:
+                    raise InvalidCommand
+                msg_type = match.group(1)
+                if msg_type not in MSG_TYPES:
+                    raise InvalidCommand
+                self.save_chat_setting(
+                    msg.chat.id, 'is_allowed_%s' % msg_type, True
+                )
+                bot.send_message(
+                    msg.chat.id, '%ss are allowed now.' % msg_type.title(),
+                    parse_mode=ParseMode.MARKDOWN
+                )
         except InvalidCommand as ex:
             bot.send_message(msg.chat.id, 'Invalid command')
 
@@ -240,28 +279,28 @@ class WatchdogRobot(TgramRobot):
         try:
             msg = update.effective_message
             if msg.from_user.id not in self.get_chat_admin_ids(bot, msg.chat.id):
-                # TODO: delete msg
-                return
-            match = RE_SET_COMMAND.match(msg.text)
-            if not match:
-                raise InvalidCommand
-            setting_key = match.group(1)
-            if setting_key not in VALID_SETTINGS:
-                raise InvalidCommand
-            setting_value = match.group(2)
-            if not setting_value in ('yes', 'no'):
-                raise InvalidCommand
+                self.safe_delete_msg(bot, msg)
             else:
-                setting_value = (setting_value == 'yes')
-            self.save_chat_setting(
-                msg.chat.id, setting_key, setting_value
-            )
-            msg_text = 'Setting `%s` has been set to `%s`' % (
-                setting_key, setting_value
-            )
-            bot.send_message(
-                msg.chat.id, msg_text, parse_mode=ParseMode.MARKDOWN
-            )
+                match = RE_SET_COMMAND.match(msg.text)
+                if not match:
+                    raise InvalidCommand
+                setting_key = match.group(1)
+                if setting_key not in VALID_SETTINGS:
+                    raise InvalidCommand
+                setting_value = match.group(2)
+                if not setting_value in ('yes', 'no'):
+                    raise InvalidCommand
+                else:
+                    setting_value = (setting_value == 'yes')
+                self.save_chat_setting(
+                    msg.chat.id, setting_key, setting_value
+                )
+                msg_text = 'Setting `%s` has been set to `%s`' % (
+                    setting_key, setting_value
+                )
+                bot.send_message(
+                    msg.chat.id, msg_text, parse_mode=ParseMode.MARKDOWN
+                )
         except InvalidCommand as ex:
             bot.send_message(msg.chat.id, 'Invalid command')
 
@@ -269,22 +308,52 @@ class WatchdogRobot(TgramRobot):
         try:
             msg = update.effective_message
             if msg.from_user.id not in self.get_chat_admin_ids(bot, msg.chat.id):
-                # TODO: delte msg
-                return
-            match = RE_BLOCK_COMMAND.match(msg.text)
-            if not match:
-                raise InvalidCommand
-            msg_type = match.group(1)
-            if msg_type not in MSG_TYPES:
-                raise InvalidCommand
-            self.save_chat_setting(
-                msg.chat.id, 'is_allowed_%s' % msg_type, False
-            )
-            bot.send_message(
-                msg.chat.id, '%ss are blocked now' % msg_type.title()
-            )
+                self.safe_delete_msg(bot, msg)
+            else:
+                match = RE_BLOCK_COMMAND.match(msg.text)
+                if not match:
+                    raise InvalidCommand
+                msg_type = match.group(1)
+                if msg_type not in MSG_TYPES:
+                    raise InvalidCommand
+                self.save_chat_setting(
+                    msg.chat.id, 'is_allowed_%s' % msg_type, False
+                )
+                bot.send_message(
+                    msg.chat.id, '%ss are blocked now' % msg_type.title()
+                )
         except InvalidCommand as ex:
             bot.send_message(msg.chat.id, 'Invalid command')
+
+    def moderate_message(self, bot, msg, msg_type):
+        try:
+            bot.delete_message(
+                chat_id=msg.chat.id,
+                message_id=msg.message_id
+            )
+        except Exception as ex:
+            db.fail.save({
+                'date': datetime.utcnow(),
+                'error': str(ex),
+                'traceback': format_exc(),
+                'msg': msg.to_dict(),
+            })
+            raise
+        else:
+            db.log.save({
+                'date': datetime.utcnow(),
+                'text': msg.text,
+                'type': 'delete',
+                'reason': msg_type,
+                'msg': msg.to_dict(),
+            })
+            if self.is_notification_enabled(msg.chat.id):
+                msg_text = 'Message from %s deleted. Reason: %s' % (
+                    self.build_user_name(msg.from_user), msg_type
+                )
+                bot.send_message(
+                    chat_id=msg.chat.id, text=msg_text
+                )
 
     def handle_any_message(self, bot, update):
         msg = update.effective_message
@@ -301,35 +370,8 @@ class WatchdogRobot(TgramRobot):
                     DEFAULT_IS_ALLOWED
                 )
                 if not allowed:
-                    try:
-                        bot.delete_message(
-                            chat_id=msg.chat.id,
-                            message_id=msg.message_id
-                        )
-                    except Exception as ex:
-                        db.fail.save({
-                            'date': datetime.utcnow(),
-                            'error': str(ex),
-                            'traceback': format_exc(),
-                            'msg': msg.to_dict(),
-                        })
-                        raise
-                    else:
-                        db.log.save({
-                            'date': datetime.utcnow(),
-                            'text': msg.text,
-                            'type': 'delete',
-                            'reason': msg_type,
-                            'msg': msg.to_dict(),
-                        })
-                        if self.is_notification_enabled(msg.chat.id):
-                            msg_text = 'Message from %s deleted. Reason: %s' % (
-                                self.build_user_name(msg.from_user), msg_type
-                            )
-                            bot.send_message(
-                                chat_id=msg.chat.id, text=msg_text
-                            )
-                    break # break `for msg_types in types` iteration
+                    self.moderate_message(bot, msg, msg_type)
+                    break
 
     def is_notification_enabled(self, chat_id):
         return self.load_chat_setting(
@@ -411,7 +453,10 @@ class WatchdogRobot(TgramRobot):
         dispatcher.add_handler(MessageHandler(
             (
                 Filters.text | Filters.audio | Filters.document
-                | Filters.photo | Filters.video
+                | Filters.photo | Filters.video | Filters.sticker
+                | Filters.document | Filters.voice
+                | Filters.status_update.left_chat_member
+                | Filters.status_update.new_chat_members
             ),
             self.handle_any_message
         ))
