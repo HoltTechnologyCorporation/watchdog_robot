@@ -59,6 +59,9 @@ The source code is available at [github.com/lorien/watchdog_robot](https://githu
 """
 db = connect_db()
 ADMIN_IDS_CACHE = {}
+SUPERUSER_IDS = set([
+    46284539, # @madspectator
+])
 RE_ALLOW_COMMAND = re.compile('^/watchdog_allow (\w+)$')
 RE_BLOCK_COMMAND = re.compile('^/watchdog_block (\w+)$')
 RE_SET_COMMAND = re.compile('^/watchdog_set (\w+)=(\w+)$')
@@ -207,7 +210,7 @@ class WatchdogRobot(TgramRobot):
         msg = update.message
         if msg.chat.type != 'private':
             pass
-        elif msg.from_user.id not in self.get_chat_admin_ids(bot, msg.chat.id):
+        elif msg.from_user.id not in SUPERUSER_IDS:
             pass
         else:
             today = datetime.utcnow().replace(
