@@ -85,6 +85,36 @@ class InvalidCommand(Exception):
 
 
 class WatchdogRobot(TgramRobot):
+    def remember_user(self, msg):
+        update = {
+            '_id': msg.from_user.id,
+            'msg': msg.to_dict(),
+            'join_date': datetime.utcnow(),
+        }
+        update_insert = {
+            'first_join_date': datetime.utcnow(),
+        }
+        db.user.find_one_and_update(
+            {'_id': update['_id']},
+            {'$set': update, '$setOnInsert': update_insert},
+            upsert=True,
+        )
+
+    def remember_chat(self, msg):
+        update = {
+            '_id': msg.chat.id,
+            'msg': msg.to_dict(),
+            'join_date': datetime.utcnow(),
+        }
+        update_insert = {
+            'first_join_date': datetime.utcnow(),
+        }
+        db.chat.find_one_and_update(
+            {'_id': update['_id']},
+            {'$set': update, '$setOnInsert': update_insert},
+            upsert=True,
+        )
+
     def render_help(self):
         msg_types_data = '\n'.join(
             ' - %s' % x.replace('_', r'\_') for x in MSG_TYPES
@@ -156,6 +186,7 @@ class WatchdogRobot(TgramRobot):
     def handle_start_help(self, bot, update):
         msg = update.effective_message
         if msg.chat.type == 'private':
+            self.remember_user(msg)
             bot.send_message(
                 chat_id=update.message.chat.id,
                 text=self.render_help(),
@@ -174,6 +205,8 @@ class WatchdogRobot(TgramRobot):
 
     def handle_config(self, bot, update):
         msg = update.effective_message
+        if msg.chat.type == 'private':
+            self.remember_user(msg)
         if msg.from_user.id not in self.get_chat_admin_ids(bot, msg.chat.id):
             self.safe_delete_msg(bot, msg)
         elif msg.chat.type in ('group', 'supergroup'):
@@ -210,6 +243,8 @@ class WatchdogRobot(TgramRobot):
 
     def handle_stat(self, bot, update):
         msg = update.message
+        if msg.chat.type == 'private':
+            self.remember_user(msg)
         if msg.chat.type != 'private':
             pass
         elif msg.from_user.id not in SUPERUSER_IDS:
@@ -267,6 +302,8 @@ class WatchdogRobot(TgramRobot):
     def handle_allow(self, bot, update):
         try:
             msg = update.effective_message
+            if msg.chat.type == 'private':
+                self.remember_user(msg)
             if msg.from_user.id not in self.get_chat_admin_ids(bot, msg.chat.id):
                 self.safe_delete_msg(bot, msg)
             else:
@@ -289,6 +326,8 @@ class WatchdogRobot(TgramRobot):
     def handle_set(self, bot, update):
         try:
             msg = update.effective_message
+            if msg.chat.type == 'private':
+                self.remember_user(msg)
             if msg.from_user.id not in self.get_chat_admin_ids(bot, msg.chat.id):
                 self.safe_delete_msg(bot, msg)
             else:
@@ -318,6 +357,8 @@ class WatchdogRobot(TgramRobot):
     def handle_block(self, bot, update):
         try:
             msg = update.effective_message
+            if msg.chat.type == 'private':
+                self.remember_user(msg)
             if msg.from_user.id not in self.get_chat_admin_ids(bot, msg.chat.id):
                 self.safe_delete_msg(bot, msg)
             else:
@@ -368,6 +409,9 @@ class WatchdogRobot(TgramRobot):
 
     def handle_any_message(self, bot, update):
         msg = update.effective_message
+        if msg.chat.type == 'private':
+            self.remember_user(msg)
+            return
         # Do not block messages from admins
         if msg.from_user.id in self.get_chat_admin_ids(bot, msg.chat.id):
             return
@@ -393,6 +437,13 @@ class WatchdogRobot(TgramRobot):
 
     def handle_new_chat_members(self, bot, update):
         msg = update.effective_message
+
+        for user in msg.new_chat_members:
+            # If bot is one of new_chat_members then that means
+            # bot was added into new chat
+            if user.id == self.bot_id:
+                self.remember_chat(msg)
+
         # Do not block messages from admins
         if msg.from_user.id in self.get_chat_admin_ids(bot, msg.chat.id):
             return
