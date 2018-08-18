@@ -22,16 +22,22 @@ class InvalidCommand(Exception):
 
 HELP = """*Watchdog Robot*
 
-Type of objects which this bot can delete:
+Bot can delete messages of these types:
 {msg_types}
 
-All features could be enabled and disabled for specific chat.
+To start deleting messages of particular type use this command in chat: `/watchdog_block MSG_TYPE` where MSG\_TYPE is one of types listed above.
 
-*Commands*
+To stop deleting messages of particular type use: `/watchdog_allow MSG_TYPE` where MSG\_TYPE is one of types listed above.
 
-/help - display this help message
+By defalt, messages of all types are allowed.
 
-*How to Use*
+To see which message types are allowed and which disabled use command `/watchdog_config`
+
+By default when bot deletes message it write about it to the chat. If you want to disable this notifications use command `/watchdog_set notify_actions=no`
+
+All these commands `/watchdog_allow`, `/watchdog_block`, `/watchdog_config` and `/watchdog_set` have to be sent to the chat which you want to configure. Do not send this command in private message to the bot, it will ignore such private messages.
+
+*How to Install Bot to the Chat*
 
 - Add bot as ADMIN to the chat group
 - Allow bot to delete messages, any other admin permissions are not required
