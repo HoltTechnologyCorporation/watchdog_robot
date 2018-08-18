@@ -76,7 +76,7 @@ VALID_SETTINGS = (
 MSG_TYPES = (
     'link', 'bot', 'user', 'sticker', 'gif', 'voice',
     'attachment', 'audio', 'photo', 'user_joined_msg',
-    'user_left_msg', 'mention',
+    'user_left_msg', 'mention', 'video_message',
 )
 
 
@@ -145,6 +145,8 @@ class WatchdogRobot(TgramRobot):
             ret.add('user_joined_msg')
         if msg.left_chat_member:
             ret.add('user_left_msg')
+        if msg.video_note:
+            ret.add('video_message')
         return ret
 
     def before_start_processing(self):
@@ -464,11 +466,15 @@ class WatchdogRobot(TgramRobot):
                 Filters.text | Filters.audio | Filters.document
                 | Filters.photo | Filters.video | Filters.sticker
                 | Filters.document | Filters.voice
+                | Filters.video_note
                 | Filters.status_update.left_chat_member
                 | Filters.status_update.new_chat_members
             ),
             self.handle_any_message
         ))
+        #dispatcher.add_handler(
+        #    MessageHandler(Filters.all, self.handle_any_other)
+        #)
 
 
 if __name__ == '__main__':
