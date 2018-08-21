@@ -435,62 +435,62 @@ class WatchdogRobot(TgramRobot):
             DEFAULT_SETTINGS['notify_actions'],
         )
 
-    def handle_new_chat_members(self, bot, update):
-        msg = update.effective_message
+    #def handle_new_chat_members(self, bot, update):
+    #    msg = update.effective_message
 
-        for user in msg.new_chat_members:
-            # If bot is one of new_chat_members then that means
-            # bot was added into new chat
-            if user.id == self.bot_id:
-                self.remember_chat(msg)
+    #    for user in msg.new_chat_members:
+    #        # If bot is one of new_chat_members then that means
+    #        # bot was added into new chat
+    #        if user.id == self.bot_id:
+    #            self.remember_chat(msg)
 
-        # Do not block messages from admins
-        if msg.from_user.id in self.get_chat_admin_ids(bot, msg.chat.id):
-            return
-        # Handle message from non-admin user
-        user_allowed = self.load_chat_setting(
-            msg.chat.id,
-            'is_allowed_user',
-            DEFAULT_IS_ALLOWED
-        )
-        bot_allowed = self.load_chat_setting(
-            msg.chat.id,
-            'is_allowed_bot',
-            DEFAULT_IS_ALLOWED
-        )
-        if not bot_allowed or not user_allowed:
-            for user in msg.new_chat_members:
-                reason = None
-                if not bot_allowed and user.is_bot:
-                    reason = 'bot'
-                elif not user_allowed:
-                    reason = 'user'
-                if reason:
-                    try:
-                        bot.kick_chat_member(msg.chat.id, user.id)
-                    except Exception as ex:
-                        db.fail.save({
-                            'date': datetime.utcnow(),
-                            'error': str(ex),
-                            'traceback': format_exc(),
-                            'msg': msg.to_dict(),
-                        })
-                        raise
-                    else:
-                        db.log.save({
-                            'date': datetime.utcnow(),
-                            'text': msg.text,
-                            'type': 'kick',
-                            'reason': reason,
-                            'msg': msg.to_dict(),
-                        })
-                        if self.is_notification_enabled(msg.chat.id):
-                            msg_text = 'User %s removed. Reason: %s are not allowed' % (
-                                self.build_user_name(user), reason
-                            )
-                            bot.send_message(
-                                chat_id=msg.chat.id, text=msg_text
-                            )
+    #    # Do not block messages from admins
+    #    if msg.from_user.id in self.get_chat_admin_ids(bot, msg.chat.id):
+    #        return
+    #    # Handle message from non-admin user
+    #    user_allowed = self.load_chat_setting(
+    #        msg.chat.id,
+    #        'is_allowed_user',
+    #        DEFAULT_IS_ALLOWED
+    #    )
+    #    bot_allowed = self.load_chat_setting(
+    #        msg.chat.id,
+    #        'is_allowed_bot',
+    #        DEFAULT_IS_ALLOWED
+    #    )
+    #    if not bot_allowed or not user_allowed:
+    #        for user in msg.new_chat_members:
+    #            reason = None
+    #            if not bot_allowed and user.is_bot:
+    #                reason = 'bot'
+    #            elif not user_allowed:
+    #                reason = 'user'
+    #            if reason:
+    #                try:
+    #                    bot.kick_chat_member(msg.chat.id, user.id)
+    #                except Exception as ex:
+    #                    db.fail.save({
+    #                        'date': datetime.utcnow(),
+    #                        'error': str(ex),
+    #                        'traceback': format_exc(),
+    #                        'msg': msg.to_dict(),
+    #                    })
+    #                    raise
+    #                else:
+    #                    db.log.save({
+    #                        'date': datetime.utcnow(),
+    #                        'text': msg.text,
+    #                        'type': 'kick',
+    #                        'reason': reason,
+    #                        'msg': msg.to_dict(),
+    #                    })
+    #                    if self.is_notification_enabled(msg.chat.id):
+    #                        msg_text = 'User %s removed. Reason: %s are not allowed' % (
+    #                            self.build_user_name(user), reason
+    #                        )
+    #                        bot.send_message(
+    #                            chat_id=msg.chat.id, text=msg_text
+    #                        )
 
     def register_handlers(self, dispatcher):
         dispatcher.add_handler(CommandHandler(
@@ -509,9 +509,9 @@ class WatchdogRobot(TgramRobot):
         dispatcher.add_handler(CommandHandler(
             'watchdog_set', self.handle_set
         ))
-        dispatcher.add_handler(MessageHandler(
-            Filters.status_update.new_chat_members, self.handle_new_chat_members
-        ))
+        #dispatcher.add_handler(MessageHandler(
+        #    Filters.status_update.new_chat_members, self.handle_new_chat_members
+        #))
         dispatcher.add_handler(MessageHandler(
             (
                 Filters.text | Filters.audio | Filters.document
