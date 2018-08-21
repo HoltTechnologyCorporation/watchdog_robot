@@ -260,10 +260,10 @@ class WatchdogRobot(TgramRobot):
                 end = start + timedelta(days=1)
                 query = {
                     'date': {'$gte': start, '$lt': end},
-                    'type': 'delete_msg',
+                    'type': 'delete',
                 }
                 events = list(db.log.find(query))
-                chat_count = len(set((x['chat_id'] for x in events)))
+                chat_count = len(set((x['msg']['chat']['id'] for x in events)))
                 msg_count = len(events)
                 day_chats.insert(0, chat_count)
                 day_messages.insert(0, msg_count)
