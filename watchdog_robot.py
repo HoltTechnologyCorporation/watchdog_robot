@@ -270,7 +270,7 @@ class WatchdogRobot(TgramRobot):
                 start -= timedelta(days=1)
             output = '\n'.join((
                 'Chats: %s' % ' | '.join(map(str, day_chats)),
-                'Deleted messages: %s' % ' | '.join(map(str, day_chats)),
+                'Deleted messages: %s' % ' | '.join(map(str, day_messages)),
             ))
             bot.send_message(
                 chat_id=msg.chat.id,
