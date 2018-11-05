@@ -9,7 +9,7 @@ All features could be enabled and disabled for specific chat.
 
 ## Support
 
-* Email: lorien@lorien.name
+* Email: lorien @ lorien . name
 * Use github issues to report bugs: [github issues](https://github.com/lorien/derminator_bot/issues)
 
 ## Other projects

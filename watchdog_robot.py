@@ -44,7 +44,7 @@ All these commands `/watchdog_allow`, `/watchdog_block`, `/watchdog_config` and 
 
 *Questions, Feedback*
 
-Email: lorien@lorien.name
+Email: lorien @ lorien . name
 
 *Open Source*
 
