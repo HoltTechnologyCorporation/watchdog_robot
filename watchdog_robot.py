@@ -165,7 +165,7 @@ class WatchdogRobot(TgramRobot):
             ret.add('gif')
         if msg.voice:
             ret.add('voice')
-        if msg.document:
+        if msg.document and msg.document.mime_type != 'video/mp4':
             ret.add('attachment')
         if msg.audio:
             ret.add('audio')
