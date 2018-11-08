@@ -222,17 +222,29 @@ class WatchdogRobot(TgramRobot):
                         setting, 'YES' if allowed else 'NO'
                     )
                 )
+            allowed_box = []
+            blocked_box = []
             for msg_type in MSG_TYPES:
                 allowed = self.load_chat_setting(
                     msg.chat.id,
                     'is_allowed_%s' % msg_type,
                     DEFAULT_IS_ALLOWED
                 )
-                out.append(
-                    ' - `%s` allowed: %s' % (
-                        msg_type, 'YES' if allowed else 'NO'
-                    )
-                )
+                box = allowed_box if allowed else blocked_box
+                box.append(' - `%s`' % msg_type)
+            out.append('\n*Allowed content:*')
+            if allowed_box:
+                for item in sorted(allowed_box):
+                    out.append(item)
+            else:
+                out.append('---')
+            out.append('\n*Blocked content:*')
+            if blocked_box:
+                for item in sorted(blocked_box):
+                    out.append(item)
+            else:
+                out.append('---')
+
             msg_text = '\n'.join(out)
             bot.send_message(
                 chat_id=update.message.chat.id,
