@@ -1,21 +1,21 @@
+## This is obsolete repository
+
+This repository contains a deprecated snapshot of bot's source base. I **keep** maintaining bot, I just closed its sources.
+
+Check out full list of my bots here: [tgdev.io](https://tgdev.io)
+
+Use telegram groups to ask questions or share your thougts:
+
+* [@tgdev_en](https://t.me/tgdev_en) - English speaking group
+* [@tgdev_ru](https://t.me/tgdev_ru) - Russian speaking group
+
 ## About watchdog_robot
 
 This bot can delete:
+
  * all messages with links
  * all joined bots
  * all joined users
+ * _and many other things_
 
-All features could be enabled and disabled for specific chat.
-
-## Support
-
-* Email: lorien @ lorien . name
-* Use github issues to report bugs: [github issues](https://github.com/lorien/derminator_bot/issues)
-
-## Other projects
-
-* [@daysandbox_bot](https://t.me/daysandbox_bot) - bot that fights with spam messages in chat groups
-* [@nosticker_bot](https://t.me/nosticker_bot) - bot to delete stickers posted to group
-* [@joinhider_bot](https://t.me/joinhider_bot) - bot to delete messages about new user joined the chat
-* [@coinsignal_robot](https://t.me/coinsignal_robot) - bot to be notified when price of specific coin reaches the level you have set, also you can use this bot just to see price of coins.
-* [@lang_blocker_bot](https://t.me/lang_blocker_bot) - bot to delete messages in particular languages configured by chat administrator 
+All features could be enabled and disabled for specific chat using bot administration commands.
